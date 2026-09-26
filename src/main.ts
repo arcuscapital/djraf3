@@ -1,13 +1,12 @@
 import "./style.css";
-import { BedPlayer, LoopPlayer, Recorder, unlockAudio } from "./audio";
+import { MusicPlayer, Recorder, preloadMusic, unlockAudio } from "./audio";
 import { handleRedirect, isLoggedIn, login } from "./auth";
 import { Show, TYPE_LABELS } from "./show";
-import { tryDuck } from "./spotifyBed";
 import { assignSongs, autoSongsUsed } from "./songs";
-import { fromNowPlaying, fromPlaylist } from "./songSource";
+import { fromNowPlaying } from "./songSource";
 import * as sp from "./spotify";
 import * as store from "./storage";
-import type { BedChoice, BedId, Block, BlockType, SongSource, Track } from "./types";
+import type { Block, BlockType, SongSource, Track } from "./types";
 import { BUILD_ID, watchForUpdates } from "./update";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -16,10 +15,6 @@ const show = (el: HTMLElement, on: boolean) => el.classList.toggle("hidden", !on
 // ====================== STATE ======================
 let blocks: Block[] = store.loadBlocks();
 let source: SongSource | null = store.loadSource();
-// Default talk-over song (parent's pick): "Bumblebee" by Mike Franklyn.
-const DEFAULT_BED_TRACK: Track = { uri: "spotify:track:3hkBYWip4MNqI4G0sG6WFH", name: "Bumblebee", artist: "Mike Franklyn", durationMs: 120666 };
-let bedChoice: BedChoice = store.loadBed();
-let bedTrack: Track = store.loadBedTrack() ?? DEFAULT_BED_TRACK;
 let loopEnabled = store.loadLoop();
 let deviceId: string | null = null;
 let current: Show | null = null;
@@ -28,12 +23,10 @@ let resumeTracks: Map<string, Track[]> | null = null;
 let nextId = Date.now();
 const makeId = () => "b" + nextId++;
 
-// The song picked as talk-over music is never also played in a songs block.
-const computeTracks = () =>
-  assignSongs(blocks, source?.pool ?? [], source?.offset ?? 0, bedChoice === "spotify" && bedTrack ? [bedTrack.uri] : []);
+const computeTracks = () => assignSongs(blocks, source?.pool ?? [], source?.offset ?? 0);
 function save() { store.saveBlocks(blocks); }
 
-const MODE_LABELS: Record<string, string> = { quiet: "🤫 Quiet", record: "🎙️ Recorded", background: "🎶 Background" };
+const MODE_LABELS = { talk: "🎤 Talk", record: "🎙️ Recorded" };
 const TYPE_ICONS: Record<BlockType, string> = { songs: "🎵", jingle: "🎤", talk: "🗣️", bed: "🎶", commercial: "📢" };
 const SHORT_LABELS: Record<BlockType, string> = { songs: "Songs", jingle: "Jingle", talk: "News", bed: "DJ Talk", commercial: "Ad Break" };
 
@@ -50,7 +43,8 @@ const songsModal = $("songs-modal");
 const pickModal = $("pick-modal");
 const allModals = [addModal, modeModal, recorderModal, songsModal, pickModal];
 
-$("app-version-tag").textContent = "v2 · " + BUILD_ID;
+const VERSION_TAG = "v3 · " + BUILD_ID;
+$("app-version-tag").textContent = VERSION_TAG;
 
 // ====================== BLOCK LIST ======================
 function renderBlocks() {
@@ -63,10 +57,10 @@ function renderBlocks() {
     let right: string;
     if (block.type === "songs") {
       const names = (tracks.get(block.id) ?? []).map(t => t.name).join(" · ");
-      left = `<span class="block-icon">🎵</span><span class="block-text">Play <span class="song-count">${block.count}</span> ${block.count === 1 ? "Song" : "Songs"}<span class="song-names">${names ? escapeHtml(names) : "Pick where songs come from ↑"}</span></span>`;
+      left = `<span class="block-icon">🎵</span><span class="block-text">Play <span class="song-count">${block.count}</span> ${block.count === 1 ? "Song" : "Songs"}<span class="song-names">${names ? escapeHtml(names) : "Push the red button ↑"}</span></span>`;
       right = `<button class="num-btn" data-action="minus">−</button><button class="num-btn" data-action="plus">+</button><button class="delete-btn" data-action="delete">×</button>`;
     } else {
-      const mode = (MODE_LABELS[block.mode ?? "quiet"] ?? "") + (block.mode === "record" && block.bed ? " + 🎶" : "");
+      const mode = (block.mode === "record" ? MODE_LABELS.record : MODE_LABELS.talk) + (block.mode === "record" && block.music ? " + 🎶" : "");
       left = `<span class="block-icon">${TYPE_ICONS[block.type]}</span><span class="block-text">${TYPE_LABELS[block.type]} <span class="block-mode-badge">${mode}</span></span>`;
       right = `<button class="edit-btn" data-action="edit">✎</button><button class="delete-btn" data-action="delete">×</button>`;
     }
@@ -280,11 +274,11 @@ document.querySelectorAll<HTMLButtonElement>(".block-type-btn").forEach(btn => {
       closeAllModals();
       return;
     }
-    openModeModal({ id: makeId(), type, mode: "quiet" }, true);
+    openModeModal({ id: makeId(), type, mode: "talk" }, true);
   });
 });
 
-// ---------- how should it work (quiet / record / record + music / music) ----------
+// ---------- how should it work: Talk (live) or Record ----------
 let target: Block | null = null;
 let targetIsNew = false;
 function openModeModal(block: Block, isNew: boolean) {
@@ -297,29 +291,19 @@ $("close-mode-modal").addEventListener("click", closeAllModals);
 document.querySelectorAll<HTMLButtonElement>(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     if (!target) return;
-    const mode = btn.dataset.mode;
-    if (mode === "quiet" || mode === "background") {
+    if (btn.dataset.mode === "talk") {
       if (target.mode === "record") {
         if (!confirm("This will delete your recording. OK?")) return;
         void store.deleteRecording(target.id);
       }
-      target.mode = mode;
-      target.bed = null;
-      target.bedTrack = undefined;
+      target.mode = "talk";
+      target.music = undefined;
       finalize();
     } else {
-      openRecorder(mode === "record-bg" ? recordingBed() : null);
+      openRecorder();
     }
   });
 });
-
-// Recordings with music use music the app plays itself (built-in, or the music
-// file saved on this phone): turning a Spotify song down on a phone turns the
-// whole phone down, which would make his voice quiet too.
-type RecBed = BedId | "file";
-function recordingBed(): RecBed {
-  return bedChoice === "spotify" ? "chill" : bedChoice;
-}
 
 function finalize() {
   if (!target) return;
@@ -331,54 +315,57 @@ function finalize() {
 }
 
 // ---------- recorder ----------
+// No time limit: he starts and stops it. The background music button is off
+// until he taps it; the song loops for as long as he records.
 const recorder = new Recorder();
-const recordBed = new BedPlayer();
-const recordLoop = new LoopPlayer();
-async function startRecordBed(bed: RecBed) {
-  if (bed === "file") {
-    const blob = await store.loadBedFile().catch(() => null);
-    if (blob && (await recordLoop.start(blob, 0.3))) return;
-    bed = "chill";
-  }
-  await recordBed.start(bed, 0.3);
-}
-function stopRecordBed(fadeMs: number) {
-  if (recordBed.playing) recordBed.stop(fadeMs);
-  if (recordLoop.playing) recordLoop.stop(fadeMs);
-}
+const recordMusic = new MusicPlayer();
 const recMain = $<HTMLButtonElement>("recorder-main-btn");
+const recMusicBtn = $<HTMLButtonElement>("recorder-music-btn");
 const recTimer = $("recorder-timer");
 const recPreview = $<HTMLAudioElement>("recorder-preview");
 const recSave = $("recorder-save-btn");
 const recRetry = $("recorder-retry-btn");
-let recBed: RecBed | null = null;
 let recBlob: Blob | null = null;
+let recMusicUsed = false; // the music was on at some point during this take
 let recSeconds = 0;
 let recInterval: number | null = null;
-const RECORD_LIMIT_S = 60;
-const fmtLimit = "1:00";
+
+function drawMusicButton(btn: HTMLElement, on: boolean) {
+  btn.classList.toggle("on", on);
+  btn.textContent = on ? "🎶 Background music: ON" : "🎶 Background music: OFF";
+}
+function setRecordMusic(on: boolean) {
+  if (on) {
+    void unlockAudio();
+    void recordMusic.start();
+    if (recorder.recording) recMusicUsed = true;
+  } else if (recordMusic.wanted) {
+    recordMusic.stop(600);
+  }
+  drawMusicButton(recMusicBtn, on);
+}
+recMusicBtn.addEventListener("click", () => setRecordMusic(!recordMusic.wanted));
 
 function resetRecorderUI() {
   show(recMain, true);
   recMain.textContent = "⏺ Start Recording";
+  setRecordMusic(false);
+  show(recMusicBtn, true);
   show(recTimer, false);
-  recTimer.textContent = "00:00";
+  recTimer.textContent = "0:00";
   show(recPreview, false);
   recPreview.removeAttribute("src");
   show(recSave, false);
   show(recRetry, false);
   recBlob = null;
+  recMusicUsed = false;
   $("close-recorder-modal").textContent = "Cancel";
 }
-function openRecorder(bed: RecBed | null) {
-  recBed = bed;
+function openRecorder() {
   resetRecorderUI();
-  $("recorder-hint").textContent = bed
-    ? `Tap the button and talk — ${bedName(bed)} plays while you record, and plays under it on air.`
-    : "Tap the button, say your bit, then tap stop.";
+  $("recorder-hint").textContent = "Tap the button, say your bit, then tap stop. Want music under it? Tap 🎶 Background music.";
   openModal(recorderModal);
 }
-const bedName = (b: RecBed) => (b === "file" ? `“${store.bedFileName() ?? "your song"}”` : `${({ chill: "chill", hype: "hype", serious: "serious" })[b]} music`);
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 // The first time, the phone asks permission to use the mic. Until he answers,
@@ -401,22 +388,22 @@ recMain.addEventListener("click", async () => {
     micStarting = false;
   }
   if (recorderModal.classList.contains("hidden")) { void recorder.stop(); return; } // closed while waiting
-  if (recBed) void startRecordBed(recBed);
+  recMusicUsed = recordMusic.wanted;
   recSeconds = 0;
-  recTimer.textContent = `0:00 / ${fmtLimit}`;
+  recTimer.textContent = "0:00";
   show(recTimer, true);
   recMain.textContent = "⏹ Stop Recording";
   recInterval = window.setInterval(() => {
     recSeconds++;
-    recTimer.textContent = `${fmt(recSeconds)} / ${fmtLimit}`;
-    if (recSeconds >= RECORD_LIMIT_S) void finishRecording();
+    recTimer.textContent = fmt(recSeconds);
   }, 1000);
 });
 
 async function finishRecording() {
   if (recInterval !== null) { clearInterval(recInterval); recInterval = null; }
-  stopRecordBed(600);
   const blob = await recorder.stop();
+  setRecordMusic(false);
+  show(recMusicBtn, false);
   if (!blob) return;
   recBlob = blob;
   recPreview.src = URL.createObjectURL(blob);
@@ -436,8 +423,7 @@ async function keepTake() {
   recBlob = null;
   await store.saveRecording(target.id, blob);
   target.mode = "record";
-  target.bed = recBed;
-  target.bedTrack = undefined;
+  target.music = recMusicUsed || undefined;
   if (targetIsNew) blocks.push(target);
   targetIsNew = false;
   invalidateResume();
@@ -447,7 +433,7 @@ async function keepTake() {
 function cancelRecording() {
   if (recInterval !== null) { clearInterval(recInterval); recInterval = null; }
   if (recorder.recording) void recorder.stop();
-  stopRecordBed(300);
+  setRecordMusic(false);
   recPreview.pause();
 }
 recRetry.addEventListener("click", resetRecorderUI);
@@ -473,7 +459,7 @@ function renderSongsSheet() {
   const el = $("songs-list");
   el.innerHTML = "";
   if (!source) {
-    el.innerHTML = `<p class="recorder-hint">Choose where songs come from first (top of the screen).</p>`;
+    el.innerHTML = `<p class="recorder-hint">Play a playlist on Spotify, then push the red button at the top.</p>`;
     return;
   }
   list.forEach((t, i) => {
@@ -530,9 +516,14 @@ function openPicker(title: string, rows: PickRow[], back: (() => void) | null = 
 $("close-pick-modal").addEventListener("click", () => (pickBack ? pickBack() : closeAllModals()));
 
 // ====================== WHERE SONGS COME FROM ======================
+const usePlayingBtn = $<HTMLButtonElement>("use-playing-btn");
+let loadingSource = false;
 function renderSource(message?: string) {
-  $("source-name").textContent = source ? source.name : "Nothing picked yet";
-  $("source-hint").textContent = message ?? (source ? `${source.pool.length} songs ready` : "Play a playlist in Spotify, then tap “Use what's playing”.");
+  $("source-name").textContent = source ? source.name : "Nothing loaded yet";
+  $("source-hint").textContent = message ?? (source ? `${source.pool.length} songs ready. Changed playlist? Push the button again.` : "");
+  // Red until songs are loaded, then green.
+  usePlayingBtn.classList.toggle("loaded", !!source && !loadingSource);
+  usePlayingBtn.textContent = loadingSource ? "⏳ Loading songs…" : source ? "✅ Songs loaded" : "▶ Use what's playing";
 }
 function setSource(s: SongSource) {
   source = s;
@@ -546,158 +537,15 @@ async function needLogin(): Promise<boolean> {
   alert("Please connect Spotify first!");
   return true;
 }
-$("use-playing-btn").addEventListener("click", async () => {
-  if (await needLogin()) return;
+usePlayingBtn.addEventListener("click", async () => {
+  if (loadingSource || (await needLogin())) return;
+  loadingSource = true;
   renderSource("Checking Spotify…");
   const r = await fromNowPlaying(source);
+  loadingSource = false;
   if (r.ok) setSource(r.source);
   else renderSource(r.message);
 });
-$("choose-playlist-btn").addEventListener("click", async () => {
-  if (await needLogin()) return;
-  renderSource("Loading your playlists…");
-  let lists: sp.PlaylistInfo[] = [];
-  try { lists = await sp.getMyPlaylists(); } catch { /* shown below */ }
-  renderSource();
-  if (!lists.length) { renderSource("Couldn't load your playlists."); return; }
-  openPicker("Choose a playlist", lists.map(p => ({
-    title: p.name,
-    sub: p.tracks ? `${p.tracks} songs` : undefined,
-    onPick: async () => {
-      closeAllModals();
-      renderSource("Loading songs…");
-      const r = await fromPlaylist(p.id, p.name);
-      if (r.ok) setSource(r.source);
-      else renderSource(r.message);
-    }
-  })));
-});
-
-// ====================== BACKGROUND MUSIC CHOICE ======================
-const previewBed = new BedPlayer();
-const previewLoop = new LoopPlayer();
-let previewTimer: number | null = null;
-let previewingSpotify = false;
-function renderBeds() {
-  document.querySelectorAll<HTMLButtonElement>(".bed-pill").forEach(b => b.classList.toggle("selected", b.dataset.bed === bedChoice));
-  const line = $("bed-song");
-  // The "Song" pill covers both a Spotify song and the music file on this phone.
-  document.querySelector<HTMLButtonElement>('.bed-pill[data-bed="spotify"]')?.classList.toggle("selected", bedChoice === "spotify" || bedChoice === "file");
-  show(line, bedChoice === "spotify" || bedChoice === "file");
-  line.innerHTML = bedChoice === "file"
-    ? `📁 ${escapeHtml(store.bedFileName() ?? "Your song")} <small>(saved on this phone)</small> <u>change</u>`
-    : `🎵 ${escapeHtml(bedTrack.name)} – ${escapeHtml(bedTrack.artist)} <u>change</u>`;
-}
-function chooseBed(c: BedChoice) {
-  bedChoice = c;
-  store.saveBed(c);
-  renderBeds();
-  invalidateResume();
-  renderBlocks(); // the songs blocks may change if the talk-over song was in them
-}
-document.querySelectorAll<HTMLButtonElement>(".bed-pill").forEach(b => {
-  b.addEventListener("click", () => {
-    const c = b.dataset.bed as BedChoice;
-    // "Song": first tap picks it straight away (Bumblebee unless he chose
-    // another); tapping it again, or the song's name, changes the song.
-    if (c === "spotify" && (bedChoice === "spotify" || bedChoice === "file")) { void pickBedSong(); return; }
-    // First tap on Song: prefer the music file on this phone if there is one.
-    if (c === "spotify" && store.bedFileName()) { chooseBed("file"); if (previewBed.playing || previewingSpotify) void startPreview(); return; }
-    chooseBed(c);
-    if (previewBed.playing || previewingSpotify) void startPreview();
-  });
-});
-$("bed-song").addEventListener("click", () => void pickBedSong());
-
-function setBedTrack(t: Track) {
-  bedTrack = t;
-  store.saveBedTrack(t);
-  chooseBed("spotify");
-  closeAllModals();
-}
-
-// Pick the song to talk over: the default, the song playing on Spotify right
-// now, a pasted Spotify song link, or any song from his playlist. Always opens,
-// even before he's chosen where the show's songs come from.
-async function pickBedSong() {
-  const rows: PickRow[] = [];
-  const fileName = store.bedFileName();
-  if (fileName) rows.push({ title: `📁 ${fileName}`, sub: "Saved on this phone — plays quietly, no Spotify needed", onPick: () => { chooseBed("file"); closeAllModals(); } });
-  rows.push({ title: "📁 Use a music file on this phone…", onPick: () => { closeAllModals(); $<HTMLInputElement>("bed-file-input").click(); } });
-  const add = (t: Track, label?: string) => {
-    if (rows.some(r => r.title.endsWith(t.name) && r.sub === t.artist)) return;
-    rows.push({ title: (label ?? "") + t.name, sub: t.artist, onPick: () => setBedTrack(t) });
-  };
-  add(DEFAULT_BED_TRACK, "🐝 ");
-  if (bedTrack.uri !== DEFAULT_BED_TRACK.uri) add(bedTrack, "✓ ");
-  if (isLoggedIn()) {
-    try {
-      const now = await sp.getNowPlaying();
-      if (now?.track) add(now.track, "▶ Playing now: ");
-    } catch { /* not important */ }
-  }
-  rows.push({ title: "🔗 Paste a Spotify song link", onPick: () => void pasteBedLink() });
-  for (const t of source?.pool ?? []) add(t);
-  openPicker("Pick a song to talk over", rows);
-}
-
-// The chosen music file is saved on this device only (IndexedDB), like his
-// recordings — never uploaded or added to the public site.
-$<HTMLInputElement>("bed-file-input").addEventListener("change", async e => {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  const suggested = /^WhatsApp Audio/i.test(file.name) ? "My background song" : file.name.replace(/\.[^.]+$/, "");
-  const name = (prompt("What's this song called?", suggested) ?? suggested).trim() || suggested;
-  await unlockAudio();
-  const test = new LoopPlayer();
-  if (!(await test.start(file, 0.0001))) { alert("That file can't be played. Try a different music file."); return; }
-  test.stop(0);
-  await store.saveBedFile(file, name);
-  chooseBed("file");
-});
-
-async function pasteBedLink() {
-  const link = prompt("Paste a Spotify song link:");
-  const id = link?.match(/track[/:]([A-Za-z0-9]{10,})/)?.[1];
-  if (!id) { if (link) alert("That doesn't look like a Spotify song link."); return; }
-  if (!isLoggedIn()) { alert("Please connect Spotify first!"); return; }
-  try {
-    const t = await sp.getTrack(id);
-    if (t) { setBedTrack(t); return; }
-  } catch { /* shown below */ }
-  alert("Couldn't find that song on Spotify.");
-}
-
-async function startPreview() {
-  stopPreview();
-  if (bedChoice === "spotify") {
-    if (!deviceId && !(await ensureDevice())) return;
-    previewingSpotify = true;
-    await sp.setRepeat(deviceId!, "off");
-    await sp.playUris(deviceId!, [bedTrack.uri]);
-  } else if (bedChoice === "file") {
-    await unlockAudio();
-    const blob = await store.loadBedFile().catch(() => null);
-    if (!blob || !(await previewLoop.start(blob, 0.5))) return;
-  } else {
-    await unlockAudio();
-    await previewBed.start(bedChoice, 0.7);
-  }
-  $("bed-preview-btn").textContent = "⏹ Stop";
-  previewTimer = window.setTimeout(stopPreview, 10000);
-}
-function stopPreview() {
-  if (previewBed.playing) previewBed.stop(500);
-  if (previewLoop.playing) previewLoop.stop(500);
-  if (previewingSpotify && deviceId) void sp.pause(deviceId);
-  previewingSpotify = false;
-  $("bed-preview-btn").textContent = "▶ Listen";
-  if (previewTimer !== null) { clearTimeout(previewTimer); previewTimer = null; }
-}
-$("bed-preview-btn").addEventListener("click", () => (previewBed.playing || previewLoop.playing || previewingSpotify ? stopPreview() : void startPreview()));
-
 // ====================== LOOP ======================
 const loopToggle = $<HTMLInputElement>("loop-toggle");
 loopToggle.checked = loopEnabled;
@@ -763,10 +611,8 @@ async function followWhatsUp() {
   let now: sp.NowPlaying | null = null;
   try { now = await sp.getNowPlaying(); } catch { return; }
   if (!now?.track || now.contextType !== "playlist") return;
-  const followsThis = source.mode === "nowPlaying" || now.contextUri === `spotify:playlist:${source.playlistId}`;
-  if (!followsThis) return;
   if (source.pool[source.offset % source.pool.length]?.uri === now.track.uri) return; // already there
-  const r = source.mode === "nowPlaying" ? await fromNowPlaying(source) : await fromPlaylist(source.playlistId!, source.name);
+  const r = await fromNowPlaying(source);
   if (r.ok && !current?.running) setSource(r.source);
 }
 $("refresh-device-btn").addEventListener("click", () => void ensureDevice());
@@ -782,6 +628,7 @@ const skipBtn = $("skip-song-btn");
 const finishedBtn = $("finished-talking-btn");
 const pauseBtn = $("pause-btn");
 const trouble = $("trouble");
+const musicBtn = $("music-btn");
 
 let noticeUntil = 0;
 
@@ -841,6 +688,10 @@ const ui = {
     show(finishedBtn, kind !== "songs");
     finishedBtn.textContent = kind === "clip" ? "Skip recording → Next" : "I'm finished talking → Next";
   },
+  music(state: boolean | null) {
+    show(musicBtn, state !== null);
+    if (state !== null) drawMusicButton(musicBtn, state);
+  },
   current(i: number) {
     const nb = blocks[i + 1];
     $("next-up").textContent = "Next up: " + (nb ? (nb.type === "songs" ? `Play ${nb.count} ${nb.count === 1 ? "Song" : "Songs"}` : TYPE_LABELS[nb.type]) : loopEnabled ? "Loop → start again" : "End of show");
@@ -896,9 +747,8 @@ function releaseWakeLock() { void wakeLock?.release().catch(() => {}); wakeLock 
 async function startShow(from: number, tracks: Map<string, Track[]>) {
   if (!blocks.length) { alert("Add at least one block!"); return; }
   await unlockAudio();
-  stopPreview();
   current?.stop();
-  current = new Show(blocks, tracks, deviceId, () => ({ choice: bedChoice, track: bedTrack }), ui, () => {
+  current = new Show(blocks, tracks, deviceId, ui, () => {
     if (!loopEnabled) return null;
     advanceSource();
     return computeTracks();
@@ -986,6 +836,7 @@ $("start-show-btn").addEventListener("click", () => void prepareAndStart(resumeF
 $("restart-show-link").addEventListener("click", () => { invalidateResume(); void prepareAndStart(0); });
 skipBtn.addEventListener("click", () => current?.skipSong());
 finishedBtn.addEventListener("click", () => current?.finishedTalking());
+musicBtn.addEventListener("click", () => { void unlockAudio(); current?.toggleMusic(); });
 pauseBtn.addEventListener("click", async () => {
   if (!current) return;
   await current.togglePause();
@@ -1009,24 +860,17 @@ $("app-version-tag").addEventListener("click", async () => {
   try {
     const d = (await sp.getDevices()).find(x => x.id === deviceId);
     lines.push(`Spotify speaker: ${d?.name ?? "?"} (${d?.type ?? "?"})`);
-    let before: number | null = null;
-    const target = Math.max(5, (d?.volume_percent ?? 60) - 25);
-    const ok = await tryDuck(deviceId, target, v => { before = v; });
-    if (ok && before !== null) await sp.setVolume(deviceId, before);
-    lines.push(ok
-      ? "✅ Talk-over with a Spotify song: the app can turn Spotify down and back up by itself."
-      : "⚠️ Talk-over with a Spotify song: Spotify won't let the app change the volume on this phone. Raf will be asked to turn it down with the volume buttons (and back up after). Chill / Hype / Serious don't need this.");
     try {
       const q = await sp.getQueue();
       lines.push(q.length ? "✅ “Use what's playing” can read the songs coming up." : "ℹ️ Play a playlist in Spotify so “Use what's playing” has songs to read.");
-    } catch { lines.push("⚠️ Couldn't read Spotify's up-next list — use “Choose playlist” instead."); }
+    } catch { lines.push("⚠️ Couldn't read Spotify's up-next list. Try again in a moment."); }
     try {
       const mic = await navigator.permissions.query({ name: "microphone" as PermissionName });
       lines.push(mic.state === "granted" ? "✅ Microphone allowed." : "ℹ️ Microphone: the phone will ask the first time he records — tap Allow.");
     } catch { /* not supported */ }
   } finally {
     checking = false;
-    $("app-version-tag").textContent = "v2 · " + BUILD_ID;
+    $("app-version-tag").textContent = VERSION_TAG;
   }
   alert(lines.join("\n\n"));
 });
@@ -1067,8 +911,8 @@ function runSplash() {
 async function init() {
   renderBlocks();
   renderSource();
-  renderBeds();
   updateStartLabel();
+  preloadMusic();
   await handleRedirect();
   if (isLoggedIn()) await ensureDevice();
   else showLoggedOut();

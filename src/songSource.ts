@@ -1,6 +1,6 @@
 import * as sp from "./spotify";
 import { dedupe, findCurrent, startingAt } from "./songs";
-import type { SongSource, Track } from "./types";
+import type { SongSource } from "./types";
 
 // Where the show's songs come from. Default: whatever is playing on Spotify
 // right now (open Spotify, start any playlist) — no links, no settings.
@@ -56,19 +56,4 @@ export async function fromNowPlaying(previous: SongSource | null = null): Promis
   } catch { /* fall through */ }
 
   return { ok: false, message: "Couldn't read the songs coming up. Play a playlist in Spotify, or try “Choose playlist”." };
-}
-
-export async function fromPlaylist(id: string, name: string): Promise<SourceResult> {
-  let all: Track[];
-  try {
-    all = await sp.getPlaylistTracks(id);
-  } catch {
-    return { ok: false, message: "Spotify won't share that playlist's songs. Pick one you made yourself." };
-  }
-  if (!all.length) return { ok: false, message: "That playlist has no songs the app can play." };
-  // If Spotify is currently in this playlist, start at the song that's up.
-  const now = await nowPlaying();
-  const inThisPlaylist = now?.contextUri === `spotify:playlist:${id}`;
-  const at = inThisPlaylist ? findCurrent(all, now) : -1;
-  return { ok: true, source: { name, playlistId: id, pool: startingAt(all, at), offset: 0, mode: "playlist" } };
 }

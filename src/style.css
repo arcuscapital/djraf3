@@ -912,7 +912,7 @@ header h1 {
 /* ===== Krom FM v2 additions (same look as above) ===== */
 .source-row { margin-bottom: 8px; }
 .source-name { font-weight: 700; color: #4A90E2; font-size: 1.05rem; }
-.source-actions, .bed-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.source-actions { margin-bottom: 6px; }
 .small-btn {
   flex: 1;
   border: 2px solid #e0e0e0;
@@ -925,19 +925,6 @@ header h1 {
   cursor: pointer;
 }
 .small-btn:active { transform: scale(0.97); }
-.bed-pill {
-  flex: 1;
-  border: 2px solid #e0e0e0;
-  background: #fff;
-  color: #1e3a5f;
-  border-radius: 20px;
-  padding: 9px 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.bed-pill.selected { border-color: #F5A623; background: #FFF5E1; }
-.bed-preview { width: 100%; flex: none; }
 .song-names {
   display: block;
   font-size: 0.8rem;
@@ -986,8 +973,6 @@ header h1 {
 .block-controls { gap: 10px; }
 .num-btn, .delete-btn, .edit-btn { width: 44px; height: 44px; flex: none; }
 .edit-btn { border: none; border-radius: 50%; background: rgba(255,255,255,0.25); color: white; font-size: 1.1rem; cursor: pointer; }
-.bed-pill { min-width: 70px; }
-.bed-song { display: block; color: #1e3a5f; font-weight: 600; margin-bottom: 6px; }
 /* This block's songs on the live screen: played ones greyed out */
 .run-list { list-style: none; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid #eef2f6; text-align: left; }
 .run-list li { display: flex; align-items: center; gap: 10px; padding: 6px 2px; color: #1e3a5f; font-weight: 600; transition: opacity 0.3s; }
@@ -998,5 +983,11 @@ header h1 {
 .run-list li.played { opacity: 0.4; }
 .run-list li.played .run-title { text-decoration: line-through; }
 .run-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bed-song { cursor: pointer; }
-.bed-song u { color: #4A90E2; margin-left: 6px; }
+
+/* ===== v3: one big "Use what's playing" button — red until songs are loaded, then green ===== */
+.source-instruction { color: #27AE60; font-weight: 800; font-size: 1.05rem; text-align: center; margin: 4px 0 8px; }
+.btn-load { background: linear-gradient(135deg, #E74C3C, #C0392B); color: #fff; margin-bottom: 4px; transition: background 0.3s; }
+.btn-load.loaded { background: linear-gradient(135deg, #2ECC71, #27AE60); }
+/* Background music on/off (live Talk block and the recorder) */
+.btn-music { background: #fff; color: #1e3a5f; border: 3px solid #F5A623; }
+.btn-music.on { background: linear-gradient(135deg, #F5A623, #E67E22); color: #fff; }

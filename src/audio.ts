@@ -1,6 +1,6 @@
-import type { BedId } from "./types";
+import musicUrl from "./assets/raf-music.mp4";
 
-// All of the app's own sound — jingle chime, background music beds, recorded
+// All of the app's own sound — jingle chime, background music, recorded
 // voice — goes through one AudioContext. Spotify is always paused while any of
 // this plays, and the context is suspended again afterwards so Android hands
 // audio back to Spotify cleanly when the next song block starts.
@@ -65,167 +65,44 @@ export async function playChime(): Promise<void> {
   setTimeout(release, 1000);
 }
 
-// ---------- background music beds ----------
-// Generated live with oscillators: nothing to download or license, loops
-// forever, and starts instantly.
-const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+// ---------- the background music (Raf's song, bundled with the app) ----------
+// Played by the app itself, so it's always at the same quiet level (Spotify
+// won't let apps change the volume on Raf's phone) and loops seamlessly for
+// however long he talks or records.
+export const MUSIC_VOLUME = 0.2; // 80% quieter than the song file itself
 
-function tone(c: AudioContext, out: AudioNode, freq: number, t: number, len: number, type: OscillatorType, vol: number, cutoff = 4000) {
-  const o = c.createOscillator();
-  const f = c.createBiquadFilter();
-  const g = c.createGain();
-  o.type = type;
-  o.frequency.value = freq;
-  f.type = "lowpass";
-  f.frequency.value = cutoff;
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + Math.min(0.02, len / 4));
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  o.connect(f).connect(g).connect(out);
-  o.start(t);
-  o.stop(t + len + 0.05);
+// Download the song as soon as the app opens, so the first tap plays at once.
+let musicBytes: Promise<ArrayBuffer | null> | null = null;
+export function preloadMusic(): void {
+  musicBytes ??= fetch(musicUrl).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+}
+let musicBuf: AudioBuffer | null = null;
+async function musicBuffer(c: AudioContext): Promise<AudioBuffer | null> {
+  if (musicBuf) return musicBuf;
+  preloadMusic();
+  let bytes = await musicBytes;
+  if (!bytes) { musicBytes = null; preloadMusic(); bytes = await musicBytes; } // one retry (was offline)
+  if (!bytes) return null;
+  try { musicBuf = await c.decodeAudioData(bytes.slice(0)); } catch { return null; }
+  return musicBuf;
 }
 
-function kick(c: AudioContext, out: AudioNode, t: number, vol: number) {
-  const o = c.createOscillator();
-  const g = c.createGain();
-  o.frequency.setValueAtTime(140, t);
-  o.frequency.exponentialRampToValueAtTime(45, t + 0.15);
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-  o.connect(g).connect(out);
-  o.start(t);
-  o.stop(t + 0.35);
-}
-
-let noiseBuf: AudioBuffer | null = null;
-function noise(c: AudioContext, out: AudioNode, t: number, len: number, vol: number, hp: number) {
-  if (!noiseBuf) {
-    noiseBuf = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  }
-  const s = c.createBufferSource();
-  const f = c.createBiquadFilter();
-  const g = c.createGain();
-  s.buffer = noiseBuf;
-  f.type = "highpass";
-  f.frequency.value = hp;
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + len);
-  s.connect(f).connect(g).connect(out);
-  s.start(t);
-  s.stop(t + len + 0.02);
-}
-
-interface BedDef { bpm: number; step(c: AudioContext, out: AudioNode, step: number, t: number, stepLen: number): void }
-
-const BEDS: Record<BedId, BedDef> = {
-  chill: {
-    bpm: 78,
-    step(c, out, s, t, L) {
-      const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 67]];
-      const bar = Math.floor(s / 16) % 4;
-      const i = s % 16;
-      if (i === 0) for (const n of chords[bar]) tone(c, out, midi(n), t, L * 16, "triangle", 0.05, 1200);
-      if (i % 8 === 0) kick(c, out, t, 0.35);
-      if (i % 4 === 2) noise(c, out, t, 0.05, 0.05, 7000);
-      if (i === 6 || i === 14) tone(c, out, midi(chords[bar][0] - 12), t, L * 4, "sine", 0.12);
-    }
-  },
-  hype: {
-    bpm: 118,
-    step(c, out, s, t, L) {
-      const roots = [45, 45, 41, 43];
-      const bar = Math.floor(s / 16) % 4;
-      const i = s % 16;
-      if (i % 4 === 0) kick(c, out, t, 0.55);
-      if (i === 4 || i === 12) noise(c, out, t, 0.15, 0.2, 1500);
-      if (i % 2 === 1) noise(c, out, t, 0.03, 0.06, 8000);
-      const pat = [0, 0, 12, 0, 7, 0, 12, 10];
-      tone(c, out, midi(roots[bar] + pat[i % 8]), t, L * 0.9, "sawtooth", 0.06, 900);
-      if (i === 0) tone(c, out, midi(roots[bar] + 24), t, L * 8, "square", 0.025, 2200);
-    }
-  },
-  serious: {
-    bpm: 100,
-    step(c, out, s, t, L) {
-      const i = s % 16;
-      const bar = Math.floor(s / 16) % 2;
-      if (i === 0) for (const n of bar === 0 ? [50, 57, 62] : [48, 55, 62]) tone(c, out, midi(n), t, L * 16, "sawtooth", 0.025, 700);
-      tone(c, out, midi(86), t, 0.04, "sine", i % 4 === 0 ? 0.08 : 0.04);
-      if (i === 0 || i === 10) kick(c, out, t, 0.3);
-    }
-  }
-};
-
-export const BED_NAMES: Record<BedId, string> = { chill: "😎 Chill", hype: "⚡ Hype", serious: "🕵️ Serious" };
-
-export class BedPlayer {
-  private out: GainNode | null = null;
-  private timer: number | null = null;
-  private step = 0;
-  private nextTime = 0;
-
-  async start(id: BedId, volume = 0.7): Promise<void> {
-    this.stop(0);
-    const c = await acquire();
-    const def = BEDS[id];
-    const stepLen = 60 / def.bpm / 4;
-    this.out = c.createGain();
-    this.out.gain.setValueAtTime(0.0001, c.currentTime);
-    this.out.gain.linearRampToValueAtTime(volume, c.currentTime + 0.6);
-    this.out.connect(master);
-    this.step = 0;
-    this.nextTime = c.currentTime + 0.05;
-    const out = this.out;
-    const tick = () => {
-      while (this.nextTime < c.currentTime + 0.15) {
-        def.step(c, out, this.step, this.nextTime, stepLen);
-        this.step++;
-        this.nextTime += stepLen;
-      }
-    };
-    tick();
-    this.timer = window.setInterval(tick, 40);
-  }
-
-  stop(fadeMs = 1200): void {
-    if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
-    const out = this.out;
-    this.out = null;
-    if (!out || !ctx) return;
-    const c = ctx;
-    out.gain.cancelScheduledValues(c.currentTime);
-    out.gain.setValueAtTime(out.gain.value, c.currentTime);
-    out.gain.linearRampToValueAtTime(0.0001, c.currentTime + fadeMs / 1000);
-    setTimeout(() => { out.disconnect(); release(); }, fadeMs + 100);
-  }
-
-  get playing(): boolean { return this.out !== null; }
-}
-
-// ---------- a music file, looped (background music saved on this device) ----------
-// Played by the app itself, so it can be set to a quiet level automatically
-// (Spotify won't let apps change the volume on Raf's phone) and loops
-// seamlessly for however long he talks.
-export class LoopPlayer {
+export class MusicPlayer {
   private src: AudioBufferSourceNode | null = null;
   private out: GainNode | null = null;
+  private gen = 0; // a stop() while the song is still loading cancels that start()
+  wanted = false;
 
-  async start(blob: Blob, volume = 0.5): Promise<boolean> {
+  async start(): Promise<boolean> {
     this.stop(0);
+    const gen = ++this.gen;
+    this.wanted = true;
     const c = await acquire();
-    let buf: AudioBuffer;
-    try {
-      buf = await c.decodeAudioData(await blob.arrayBuffer());
-    } catch {
-      release();
-      return false;
-    }
+    const buf = await musicBuffer(c);
+    if (!buf || gen !== this.gen) { release(); return false; }
     const out = c.createGain();
     out.gain.setValueAtTime(0.0001, c.currentTime);
-    out.gain.linearRampToValueAtTime(volume, c.currentTime + 0.6);
+    out.gain.linearRampToValueAtTime(MUSIC_VOLUME, c.currentTime + 0.6);
     out.connect(master);
     const src = c.createBufferSource();
     src.buffer = buf;
@@ -238,6 +115,8 @@ export class LoopPlayer {
   }
 
   stop(fadeMs = 1200): void {
+    this.gen++;
+    this.wanted = false;
     const src = this.src;
     const out = this.out;
     this.src = null;

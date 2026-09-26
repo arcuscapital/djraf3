@@ -1,7 +1,7 @@
 // Spotify login with PKCE — works on a static site, no server or secret needed.
 // Same Spotify app (client id) as the original Krom FM; this address is added
-// to its Redirect URIs. Tokens use their own storage keys so this app and the
-// original can both stay logged in on the same site without interfering.
+// to its Redirect URIs. The login is shared with v2 (/djraf/, same site, same
+// storage keys), so a phone already connected there is connected here too.
 
 export const CLIENT_ID = "6ec3c6f59ec14dcca495a904a268a67f";
 export const REDIRECT_URI = window.location.origin + import.meta.env.BASE_URL;

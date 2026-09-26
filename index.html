@@ -128,29 +128,16 @@
     <h2 class="screen-title">The DJ Raf Show</h2>
 
     <div class="playlist-box">
-      <label>🎵 Songs from</label>
+      <label>🎵 Songs from Spotify</label>
       <div class="source-row">
-        <span id="source-name" class="source-name">Nothing picked yet</span>
+        <span id="source-name" class="source-name">Nothing loaded yet</span>
       </div>
       <button id="source-login-btn" class="btn btn-spotify hidden">Connect Spotify</button>
       <div class="source-actions" id="source-actions">
-        <button id="use-playing-btn" class="small-btn">▶ Use what's playing</button>
-        <button id="choose-playlist-btn" class="small-btn">📋 Choose playlist</button>
+        <p class="source-instruction">Play a playlist on Spotify, then push this button</p>
+        <button id="use-playing-btn" class="btn btn-load">▶ Use what's playing</button>
       </div>
       <small id="source-hint"></small>
-    </div>
-
-    <div class="playlist-box">
-      <label>🎶 Background music (for talk-over)</label>
-      <div class="bed-pills" id="bed-pills">
-        <button class="bed-pill" data-bed="chill">😎 Chill</button>
-        <button class="bed-pill" data-bed="hype">⚡ Hype</button>
-        <button class="bed-pill" data-bed="serious">🕵️ Serious</button>
-        <button class="bed-pill" data-bed="spotify">🎵 Song</button>
-      </div>
-      <small id="bed-song" class="bed-song hidden"></small>
-      <input type="file" id="bed-file-input" accept="audio/*,video/mp4,.m4a,.mp3,.mp4,.aac,.ogg,.wav" class="hidden" />
-      <button id="bed-preview-btn" class="small-btn bed-preview">▶ Listen</button>
     </div>
 
     <div id="blocks-list" class="blocks-list">
@@ -220,6 +207,7 @@
 
     <div class="live-buttons">
       <button id="finished-talking-btn" class="btn btn-finished">I'm finished talking → Next</button>
+      <button id="music-btn" class="btn btn-music hidden">🎶 Background music: OFF</button>
       <button id="skip-song-btn" class="btn btn-skip">Skip this song</button>
       <button id="pause-btn" class="btn btn-pause">Pause everything</button>
       <button id="stop-show-btn" class="btn btn-stop">Stop / change my show</button>
@@ -244,14 +232,12 @@
     </div>
   </div>
 
-  <!-- ===== BLOCK MODE MODAL (quiet / record / background) ===== -->
+  <!-- ===== BLOCK MODE MODAL (talk live / record) ===== -->
   <div id="mode-modal" class="modal hidden">
     <div class="modal-content">
       <h3 id="mode-modal-title">How should this work?</h3>
-      <button class="mode-btn" data-mode="quiet">🤫 I talk (no music)</button>
-      <button class="mode-btn" data-mode="background">🎶 I talk over music</button>
-      <button class="mode-btn" data-mode="record-quiet">🎙️ Record it now</button>
-      <button class="mode-btn" data-mode="record-bg">🎙️🎶 Record it with music</button>
+      <button class="mode-btn" data-mode="talk">🎤 Talk</button>
+      <button class="mode-btn" data-mode="record">🎙️ Record</button>
       <button id="close-mode-modal" class="btn btn-cancel">Cancel</button>
     </div>
   </div>
@@ -261,8 +247,9 @@
     <div class="modal-content">
       <h3>Record your voice</h3>
       <p class="recorder-hint" id="recorder-hint">Tap the button, say your bit, then tap stop.</p>
+      <button id="recorder-music-btn" class="btn btn-music">🎶 Background music: OFF</button>
       <button id="recorder-main-btn" class="btn btn-record">⏺ Start Recording</button>
-      <div id="recorder-timer" class="record-timer hidden">00:00</div>
+      <div id="recorder-timer" class="record-timer hidden">0:00</div>
       <audio id="recorder-preview" class="hidden" controls></audio>
       <button id="recorder-save-btn" class="btn btn-start hidden">✅ Use This Recording</button>
       <button id="recorder-retry-btn" class="btn btn-secondary hidden">🔁 Record Again</button>

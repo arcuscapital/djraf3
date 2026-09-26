@@ -11,7 +11,7 @@ describe("assignSongs", () => {
   it("fills songs blocks in show order from the playlist", () => {
     const blocks: Block[] = [
       { id: "a", type: "songs", count: 3 },
-      { id: "j", type: "jingle", mode: "quiet", duration: 3 },
+      { id: "j", type: "jingle", mode: "talk" },
       { id: "b", type: "songs", count: 2 }
     ];
     const m = assignSongs(blocks, pool, 0);

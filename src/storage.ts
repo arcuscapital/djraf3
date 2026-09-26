@@ -1,21 +1,23 @@
-import type { BedChoice, Block, SongSource, Track } from "./types";
+import type { Block, SongSource } from "./types";
 
 // This app shares a web address (arcuscapital.github.io) with the original
-// Krom FM, so browser storage is shared too — everything here uses its own
-// "djraf" names so neither app can touch the other's show or recordings.
+// Krom FM and with /djraf/, so browser storage is shared too. The show,
+// playlist and recordings use their own "djraf2" names so the apps can be
+// compared side by side without touching each other. (The Spotify login is
+// deliberately shared with /djraf/ — see auth.ts.)
 
-const KEYS = { blocks: "djraf_blocks", source: "djraf_source", bed: "djraf_bed", bedTrack: "djraf_bed_track", loop: "djraf_loop" };
+const KEYS = { blocks: "djraf2_blocks", source: "djraf2_source", loop: "djraf2_loop" };
 
 export function defaultBlocks(): Block[] {
   return [
-    { id: "b1", type: "jingle", mode: "quiet" },
+    { id: "b1", type: "jingle", mode: "talk" },
     { id: "b2", type: "songs", count: 3 },
-    { id: "b3", type: "talk", mode: "quiet" },
+    { id: "b3", type: "talk", mode: "talk" },
     { id: "b4", type: "songs", count: 3 },
-    { id: "b5", type: "bed", mode: "background" },
-    { id: "b6", type: "commercial", mode: "quiet" },
+    { id: "b5", type: "bed", mode: "talk" },
+    { id: "b6", type: "commercial", mode: "talk" },
     { id: "b7", type: "songs", count: 2 },
-    { id: "b8", type: "jingle", mode: "quiet" }
+    { id: "b8", type: "jingle", mode: "talk" }
   ];
 }
 
@@ -35,15 +37,11 @@ export const loadBlocks = () => read<Block[]>(KEYS.blocks, defaultBlocks());
 export const saveBlocks = (b: Block[]) => write(KEYS.blocks, b);
 export const loadSource = () => read<SongSource | null>(KEYS.source, null);
 export const saveSource = (s: SongSource | null) => write(KEYS.source, s);
-export const loadBed = () => read<BedChoice>(KEYS.bed, "spotify"); // default: talk over a Spotify song (Bumblebee)
-export const saveBed = (b: BedChoice) => write(KEYS.bed, b);
-export const loadBedTrack = () => read<Track | null>(KEYS.bedTrack, null);
-export const saveBedTrack = (t: Track | null) => write(KEYS.bedTrack, t);
 export const loadLoop = () => read<boolean>(KEYS.loop, false);
 export const saveLoop = (v: boolean) => write(KEYS.loop, v);
 
 // ---------- recordings (IndexedDB) ----------
-const DB = "djraf-db";
+const DB = "djraf2-db";
 const STORE = "recordings";
 let dbp: Promise<IDBDatabase> | null = null;
 
@@ -66,16 +64,6 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
     t.onerror = () => reject(t.error);
   });
 }
-
-// A background music file picked from this device. Stays on this device only
-// (the site is public, so music files are never put into the app itself).
-const BED_FILE_KEY = "__bed_file__";
-export async function saveBedFile(blob: Blob, name: string) {
-  await saveRecording(BED_FILE_KEY, blob);
-  write("djraf_bed_file_name", name);
-}
-export const loadBedFile = () => loadRecording(BED_FILE_KEY);
-export const bedFileName = () => read<string | null>("djraf_bed_file_name", null);
 
 export const saveRecording = (id: string, blob: Blob) => tx<void>("readwrite", s => s.put(blob, id));
 export const loadRecording = (id: string) => tx<Blob | undefined>("readonly", s => s.get(id)).then(b => b ?? null);
