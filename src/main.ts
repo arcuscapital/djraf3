@@ -581,13 +581,17 @@ function renderOrder() {
   const manual = manualUris();
   orderRows = rotatedPool().filter(t => !locked.has(t.uri) && !manual.has(t.uri));
   const inShow = new Set([...computeTracks().values()].flat().map(t => t.uri));
-  const now = orderLive ? current?.nowPlaying() : null;
-  show($("order-now"), !!now);
-  $("order-now").textContent = now ? `▶ Playing now: ${now.name}` : "";
-  $("order-hint").textContent = "Press and hold a song, then drag it up or down." + (inShow.size ? " Blue numbers are in your show." : "");
-  orderList.innerHTML = orderRows.map((t, i) =>
-    `<li class="order-row${inShow.has(t.uri) && !locked.has(t.uri) ? " in-show" : ""}"><span class="order-num">${i + 1}</span><span class="order-title">${escapeHtml(t.name)}<small>${escapeHtml(t.artist)}</small></span><span class="order-handle" aria-hidden="true">≡</span></li>`
-  ).join("");
+  // Mid-show, this block's songs so far sit at the top, locked: they can't be
+  // dragged, and nothing can be dropped above them.
+  const fixed = orderLive && current?.running ? current.blockSoFar() : [];
+  $("order-hint").textContent = (fixed.length ? "🔒 Songs already playing can't move. " : "") + "Press and hold a song, then drag it up or down." + (inShow.size ? " Blue numbers are in your show." : "");
+  orderList.innerHTML =
+    fixed.map((t, i) =>
+      `<li class="order-locked"><span class="order-num">${i === fixed.length - 1 ? "▶" : "✓"}</span><span class="order-title">${escapeHtml(t.name)}<small>${i === fixed.length - 1 ? "Playing now" : "Played"}</small></span><span class="order-lock" aria-hidden="true">🔒</span></li>`
+    ).join("") +
+    orderRows.map((t, i) =>
+      `<li class="order-row${inShow.has(t.uri) && !locked.has(t.uri) ? " in-show" : ""}"><span class="order-num">${fixed.length + i + 1}</span><span class="order-title">${escapeHtml(t.name)}<small>${escapeHtml(t.artist)}</small></span><span class="order-handle" aria-hidden="true">≡</span></li>`
+    ).join("");
 }
 const orderDrag = makeReorderable(orderList, ".order-row", (from, to) => {
   if (!source) return;

@@ -1006,5 +1006,8 @@ header h1 {
 .order-row.in-show .order-num { background: #4A90E2; color: #fff; }
 .order-handle { font-size: 1.5rem; color: #9aa8b5; padding: 4px 8px; touch-action: none; cursor: grab; }
 .order-row.lifting { background: #eef6fd; box-shadow: 0 6px 16px rgba(0,0,0,0.18); border-radius: 12px; position: relative; z-index: 2; cursor: grabbing; }
-.order-now { background: #f4f6f8; color: #7f8c8d; border-radius: 12px; padding: 10px 12px; font-weight: 600; margin-bottom: 8px; text-align: left; }
+.order-locked { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid #eef2f6; background: #f4f6f8; color: #7f8c8d; font-weight: 600; user-select: none; -webkit-user-select: none; cursor: not-allowed; }
+.order-locked small { display: block; font-weight: 500; font-size: 0.8rem; }
+.order-locked .order-num { background: #dfe6ec; color: #7f8c8d; }
+.order-lock { font-size: 1rem; padding: 4px 8px; opacity: 0.7; }
 

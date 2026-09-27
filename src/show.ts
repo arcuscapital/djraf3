@@ -219,8 +219,9 @@ export class Show {
     if (this.blocks[this.index]?.type === "songs") out.push(...this.songList.slice(0, this.songIdx + 1));
     return out;
   }
-  nowPlaying(): Track | null {
-    return this.songIdx >= 0 ? this.songList[this.songIdx] ?? null : null;
+  // This songs block's songs so far: the ones played and the one playing.
+  blockSoFar(): Track[] {
+    return this.blocks[this.index]?.type === "songs" ? this.songList.slice(0, this.songIdx + 1) : [];
   }
   // The new running order after he moved songs around. Blocks still to come
   // simply use it; in the songs block that's on now, the songs after the one
