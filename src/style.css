@@ -991,3 +991,20 @@ header h1 {
 /* Background music on/off (live Talk block and the recorder) */
 .btn-music { background: #fff; color: #1e3a5f; border: 3px solid #F5A623; }
 .btn-music.on { background: linear-gradient(135deg, #F5A623, #E67E22); color: #fff; }
+
+/* ===== v4: ☰ song order ===== */
+.box-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.menu-btn { width: 44px; height: 44px; flex: none; border: none; border-radius: 12px; background: #eef6fd; color: #1e3a5f; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.menu-btn:active { transform: scale(0.95); }
+.status-card { position: relative; }
+.live-menu { position: absolute; top: 10px; right: 10px; }
+.order-list { list-style: none; padding: 0; }
+.order-row { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid #eef2f6; background: #fff; color: #1e3a5f; font-weight: 600; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; }
+.order-row small { display: block; font-weight: 500; font-size: 0.8rem; color: #7f8c8d; }
+.order-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-num { width: 28px; height: 28px; flex: none; border-radius: 50%; background: #eef6fd; color: #4A90E2; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+.order-row.in-show .order-num { background: #4A90E2; color: #fff; }
+.order-handle { font-size: 1.5rem; color: #9aa8b5; padding: 4px 8px; touch-action: none; cursor: grab; }
+.order-row.lifting { background: #eef6fd; box-shadow: 0 6px 16px rgba(0,0,0,0.18); border-radius: 12px; position: relative; z-index: 2; cursor: grabbing; }
+.order-now { background: #f4f6f8; color: #7f8c8d; border-radius: 12px; padding: 10px 12px; font-weight: 600; margin-bottom: 8px; text-align: left; }
+

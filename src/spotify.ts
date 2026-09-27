@@ -168,4 +168,7 @@ export const setShuffle = (deviceId: string, on: boolean) => command(`/me/player
 export const seek = (deviceId: string, ms: number) => command(`/me/player/seek?position_ms=${Math.max(0, Math.round(ms))}&device_id=${deviceId}`, "PUT");
 export const setVolume = (deviceId: string, percent: number) => command(`/me/player/volume?volume_percent=${Math.round(percent)}&device_id=${deviceId}`, "PUT");
 export const transfer =(deviceId: string) => command(`/me/player`, "PUT", { device_ids: [deviceId], play: false });
-export const playUris = (deviceId: string, uris: string[]) => command(`/me/player/play?device_id=${deviceId}`, "PUT", { uris, position_ms: 0 });
+// `at`/`positionMs`: start part-way through the list (used when he reorders the
+// songs mid-show and the song that's playing carries on where it was).
+export const playUris = (deviceId: string, uris: string[], at = 0, positionMs = 0) =>
+  command(`/me/player/play?device_id=${deviceId}`, "PUT", at ? { uris, offset: { position: at }, position_ms: positionMs } : { uris, position_ms: positionMs });

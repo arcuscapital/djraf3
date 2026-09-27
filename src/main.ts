@@ -1,8 +1,9 @@
 import "./style.css";
 import { MusicPlayer, Recorder, preloadMusic, unlockAudio } from "./audio";
 import { handleRedirect, isLoggedIn, login } from "./auth";
+import { makeReorderable } from "./listDrag";
 import { Show, TYPE_LABELS } from "./show";
-import { assignSongs, autoSongsUsed } from "./songs";
+import { assignSongs, autoSongsUsed, rebuildPool } from "./songs";
 import { fromNowPlaying } from "./songSource";
 import * as sp from "./spotify";
 import * as store from "./storage";
@@ -41,9 +42,10 @@ const modeModal = $("mode-modal");
 const recorderModal = $("recorder-modal");
 const songsModal = $("songs-modal");
 const pickModal = $("pick-modal");
-const allModals = [addModal, modeModal, recorderModal, songsModal, pickModal];
+const orderModal = $("order-modal");
+const allModals = [addModal, modeModal, recorderModal, songsModal, pickModal, orderModal];
 
-const VERSION_TAG = "v3 · " + BUILD_ID;
+const VERSION_TAG = "v4 · " + BUILD_ID;
 $("app-version-tag").textContent = VERSION_TAG;
 
 // ====================== BLOCK LIST ======================
@@ -524,6 +526,7 @@ function renderSource(message?: string) {
   // Red until songs are loaded, then green.
   usePlayingBtn.classList.toggle("loaded", !!source && !loadingSource);
   usePlayingBtn.textContent = loadingSource ? "⏳ Loading songs…" : source ? "✅ Songs loaded" : "▶ Use what's playing";
+  show($("order-btn"), !!source);
 }
 function setSource(s: SongSource) {
   source = s;
@@ -546,6 +549,67 @@ usePlayingBtn.addEventListener("click", async () => {
   if (r.ok) setSource(r.source);
   else renderSource(r.message);
 });
+// ====================== SONG ORDER (☰) ======================
+// The show plays the playlist in order (from where the last show stopped), so
+// changing the order means reordering that list. Mid-show, songs already
+// played and the one playing are locked; everything after can move, and the
+// show picks up the new order straight away.
+let orderLive = false; // opened from the live show
+let orderRows: Track[] = []; // the songs the sheet shows, in order
+const orderList = $("order-list");
+
+// The playlist starting from the next show's first song.
+function rotatedPool(): Track[] {
+  if (!source?.pool.length) return [];
+  const n = source.pool.length;
+  const o = ((source.offset % n) + n) % n;
+  return [...source.pool.slice(o), ...source.pool.slice(0, o)];
+}
+// Songs he picked himself for a slot stay in that slot, so they aren't in the list.
+const manualUris = () => new Set(blocks.flatMap(b => b.manual ?? []).filter((t): t is Track => !!t).map(t => t.uri));
+const lockedUris = () => new Set(orderLive && current?.running ? current.playedSongs().map(t => t.uri) : []);
+
+function openOrder(live: boolean) {
+  if (!source) return;
+  orderLive = live;
+  $("order-title").textContent = live ? "Songs coming up" : "Song order";
+  renderOrder();
+  openModal(orderModal);
+}
+function renderOrder() {
+  const locked = lockedUris();
+  const manual = manualUris();
+  orderRows = rotatedPool().filter(t => !locked.has(t.uri) && !manual.has(t.uri));
+  const inShow = new Set([...computeTracks().values()].flat().map(t => t.uri));
+  const now = orderLive ? current?.nowPlaying() : null;
+  show($("order-now"), !!now);
+  $("order-now").textContent = now ? `▶ Playing now: ${now.name}` : "";
+  $("order-hint").textContent = "Press and hold a song, then drag it up or down." + (inShow.size ? " Blue numbers are in your show." : "");
+  orderList.innerHTML = orderRows.map((t, i) =>
+    `<li class="order-row${inShow.has(t.uri) && !locked.has(t.uri) ? " in-show" : ""}"><span class="order-num">${i + 1}</span><span class="order-title">${escapeHtml(t.name)}<small>${escapeHtml(t.artist)}</small></span><span class="order-handle" aria-hidden="true">≡</span></li>`
+  ).join("");
+}
+const orderDrag = makeReorderable(orderList, ".order-row", (from, to) => {
+  if (!source) return;
+  const rows = orderRows.slice();
+  const [moved] = rows.splice(from, 1);
+  rows.splice(to, 0, moved);
+  const locked = lockedUris();
+  const manual = manualUris();
+  const rot = rotatedPool();
+  const pool = rebuildPool(rot, rows, locked, manual);
+  setSource({ ...source, pool, offset: 0 });
+  if (orderLive && current?.running) current.updateTracks(computeTracks());
+  renderOrder();
+});
+$("order-btn").addEventListener("click", () => openOrder(false));
+$("live-order-btn").addEventListener("click", () => openOrder(true));
+$("order-done").addEventListener("click", closeAllModals);
+// A song finished while the sheet is open: refresh what's locked (not mid-drag).
+function refreshOrderIfOpen() {
+  if (orderLive && !orderModal.classList.contains("hidden") && !orderDrag.dragging) renderOrder();
+}
+
 // ====================== LOOP ======================
 const loopToggle = $<HTMLInputElement>("loop-toggle");
 loopToggle.checked = loopEnabled;
@@ -698,6 +762,7 @@ const ui = {
     renderTimetable(i);
   },
   songList(tracks: Track[] | null, playing: number) {
+    refreshOrderIfOpen();
     const el = $("run-list");
     show(el, !!tracks && tracks.length > 1);
     if (!tracks) return;
@@ -760,6 +825,7 @@ async function startShow(from: number, tracks: Map<string, Track[]>) {
   ui.status("Krom FM", "Getting ready…", "");
   ui.progress(0, null);
   ui.songList(null, 0);
+  show($("live-order-btn"), !!source);
   show(builderScreen, false);
   show(endScreen, false);
   show(liveScreen, true);

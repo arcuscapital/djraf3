@@ -128,7 +128,10 @@
     <h2 class="screen-title">The DJ Raf Show</h2>
 
     <div class="playlist-box">
-      <label>🎵 Songs from Spotify</label>
+      <div class="box-head">
+        <label>🎵 Songs from Spotify</label>
+        <button id="order-btn" class="menu-btn hidden" aria-label="Change the song order">☰</button>
+      </div>
       <div class="source-row">
         <span id="source-name" class="source-name">Nothing loaded yet</span>
       </div>
@@ -184,6 +187,7 @@
     </header>
 
     <div class="status-card" id="status-card">
+      <button id="live-order-btn" class="menu-btn live-menu hidden" aria-label="Change the song order">☰</button>
       <div class="status-label" id="status-label">Krom FM</div>
       <div class="status-main" id="status-main">Getting ready…</div>
       <div class="status-sub" id="status-sub"></div>
@@ -270,6 +274,17 @@
       <div id="songs-list" class="pick-list"></div>
       <p class="recorder-hint" id="songs-hint">Tap 🔁 to swap a song.</p>
       <button id="songs-done" class="btn btn-start">Done</button>
+    </div>
+  </div>
+
+  <!-- ===== SONG ORDER (☰) ===== -->
+  <div id="order-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3 id="order-title">Song order</h3>
+      <p class="recorder-hint" id="order-hint">Press and hold a song, then drag it up or down.</p>
+      <div id="order-now" class="order-now hidden"></div>
+      <ol id="order-list" class="pick-list tall order-list"></ol>
+      <button id="order-done" class="btn btn-start">Done</button>
     </div>
   </div>
 

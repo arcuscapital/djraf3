@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assignSongs, autoSongsUsed } from "../src/songs";
 import { judgeRun, newRunState, type Snapshot } from "../src/runWatch";
-import { findCurrent, startingAt } from "../src/songs";
+import { findCurrent, rebuildPool, startingAt } from "../src/songs";
 import type { Block, Track } from "../src/types";
 
 const t = (n: number): Track => ({ uri: `spotify:track:${n}`, name: `Song ${n}`, artist: "A", durationMs: 180000 });
@@ -134,3 +134,40 @@ describe("starting from the song that's currently up", () => {
     expect(startingAt(pool, at)[0].name).toBe("Song 1");
   });
 });
+
+describe("reordering songs (☰)", () => {
+  const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(t);
+  const blocks: Block[] = [
+    { id: "a", type: "songs", count: 3 },
+    { id: "j", type: "jingle", mode: "talk" },
+    { id: "b", type: "songs", count: 3 }
+  ];
+  const names = (m: Map<string, Track[]>, id: string) => m.get(id)!.map(x => x.name);
+
+  it("before the show: the show plays his new order", () => {
+    const rows = [ten[4], ...ten.filter((_, i) => i !== 4)]; // Song 5 to the top
+    const m = assignSongs(blocks, rebuildPool(ten, rows, new Set(), new Set()), 0);
+    expect(names(m, "a")).toEqual(["Song 5", "Song 1", "Song 2"]);
+    expect(names(m, "b")).toEqual(["Song 3", "Song 4", "Song 6"]);
+  });
+
+  it("mid-show: songs already played stay put; the next song changes", () => {
+    const locked = new Set([ten[0].uri, ten[1].uri]); // Song 1 played, Song 2 playing
+    const upcoming = ten.slice(2);
+    const rows = [upcoming[3], ...upcoming.filter((_, i) => i !== 3)]; // Song 6 up next
+    const m = assignSongs(blocks, rebuildPool(ten, rows, locked, new Set()), 0);
+    expect(names(m, "a")).toEqual(["Song 1", "Song 2", "Song 6"]);
+    expect(names(m, "b")).toEqual(["Song 3", "Song 4", "Song 5"]);
+  });
+
+  it("works from a later show's starting point, and keeps songs he picked himself in their slot", () => {
+    const picked: Block[] = [{ id: "a", type: "songs", count: 2, manual: [null, ten[9]] }, { id: "b", type: "songs", count: 2 }];
+    const rotated = [...ten.slice(3), ...ten.slice(0, 3)]; // next show starts at Song 4
+    const manual = new Set([ten[9].uri]);
+    const rows = rotated.filter(x => !manual.has(x.uri)).reverse();
+    const m = assignSongs(picked, rebuildPool(rotated, rows, new Set(), manual), 0);
+    expect(names(m, "a")).toEqual(["Song 3", "Song 10"]);
+    expect(names(m, "b")).toEqual(["Song 2", "Song 1"]);
+  });
+});
+

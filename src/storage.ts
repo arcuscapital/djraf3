@@ -1,12 +1,12 @@
 import type { Block, SongSource } from "./types";
 
 // This app shares a web address (arcuscapital.github.io) with the original
-// Krom FM and with /djraf/, so browser storage is shared too. The show,
-// playlist and recordings use their own "djraf2" names so the apps can be
+// Krom FM and with /djraf/ and /djraf2/, so browser storage is shared too. The show,
+// playlist and recordings use their own "djraf3" names so the apps can be
 // compared side by side without touching each other. (The Spotify login is
 // deliberately shared with /djraf/ — see auth.ts.)
 
-const KEYS = { blocks: "djraf2_blocks", source: "djraf2_source", loop: "djraf2_loop" };
+const KEYS = { blocks: "djraf3_blocks", source: "djraf3_source", loop: "djraf3_loop" };
 
 export function defaultBlocks(): Block[] {
   return [
@@ -41,7 +41,7 @@ export const loadLoop = () => read<boolean>(KEYS.loop, false);
 export const saveLoop = (v: boolean) => write(KEYS.loop, v);
 
 // ---------- recordings (IndexedDB) ----------
-const DB = "djraf2-db";
+const DB = "djraf3-db";
 const STORE = "recordings";
 let dbp: Promise<IDBDatabase> | null = null;
 

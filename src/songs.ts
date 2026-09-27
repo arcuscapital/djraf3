@@ -75,3 +75,12 @@ export function autoSongsUsed(blocks: Block[]): number {
   }
   return n;
 }
+
+// The playlist after he dragged songs into a new order (☰). `rotated` is the
+// playlist from the show's first song; `rows` is his new order for the songs he
+// could move. Songs already played (`locked`) go first, in their played order,
+// and songs he picked for a slot himself go last — so, used with offset 0,
+// assignSongs gives the same songs so far and his new order from here on.
+export function rebuildPool(rotated: Track[], rows: Track[], locked: Set<string>, manual: Set<string>): Track[] {
+  return dedupe([...rotated.filter(t => locked.has(t.uri) && !manual.has(t.uri)), ...rows, ...rotated.filter(t => manual.has(t.uri))]);
+}

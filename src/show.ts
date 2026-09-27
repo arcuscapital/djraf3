@@ -46,6 +46,10 @@ export class Show {
   running = false;
   private seg: Segment | null = null;
   private token = 0; // guards against a stale segment finishing after we moved on
+  // the songs block that's on now (if any): its run, its songs, and which one is playing
+  private songRun: SongRun | null = null;
+  private songList: Track[] = [];
+  private songIdx = -1;
 
   constructor(
     private blocks: Block[],
@@ -65,6 +69,9 @@ export class Show {
   private run(i: number): void {
     this.seg?.stop();
     this.seg = null;
+    this.songRun = null;
+    this.songList = [];
+    this.songIdx = -1;
     this.ui.trouble(null);
     if (!this.running) return;
     if (i >= this.blocks.length) {
@@ -102,16 +109,19 @@ export class Show {
     this.ui.songList(list, 0);
     this.ui.status("Now Playing", `Song 1 of ${list.length}`, "Starting…");
     this.ui.progress(0, list[0].durationMs / 1000);
+    this.songList = list;
     const run = new SongRun(this.deviceId, list, {
       onTrack: (idx, t) => {
+        this.songIdx = idx;
         this.ui.trouble(null);
-        this.ui.songList(list, idx);
-        this.ui.status("Now Playing", `Song ${idx + 1} of ${list.length}`, `${t.name} – ${t.artist}`);
+        this.ui.songList(this.songList, idx);
+        this.ui.status("Now Playing", `Song ${idx + 1} of ${this.songList.length}`, `${t.name} – ${t.artist}`);
       },
       onProgress: (ms, dur) => this.ui.progress(ms / 1000, dur / 1000),
       onEnd: next,
       onTrouble: msg => this.ui.trouble(msg)
     });
+    this.songRun = run;
     void run.start();
     return { pause: () => run.pause(), resume: () => run.resume(), stop: () => run.stop(), skip: () => run.skip(), seek: ms => run.seek(ms) };
   }
@@ -196,6 +206,33 @@ export class Show {
       stop: () => { over = true; if (progressTimer !== null) clearInterval(progressTimer); clip.stop(); music?.stop(600); },
       done: finish
     };
+  }
+
+  // ---------- reordering the songs mid-show ----------
+  // Songs already played, and the one playing now. These can't be moved.
+  playedSongs(): Track[] {
+    const out: Track[] = [];
+    for (let j = 0; j < this.index && j < this.blocks.length; j++) {
+      const b = this.blocks[j];
+      if (b.type === "songs") out.push(...(this.tracks.get(b.id) ?? []));
+    }
+    if (this.blocks[this.index]?.type === "songs") out.push(...this.songList.slice(0, this.songIdx + 1));
+    return out;
+  }
+  nowPlaying(): Track | null {
+    return this.songIdx >= 0 ? this.songList[this.songIdx] ?? null : null;
+  }
+  // The new running order after he moved songs around. Blocks still to come
+  // simply use it; in the songs block that's on now, the songs after the one
+  // playing are swapped in.
+  updateTracks(tracks: Map<string, Track[]>): void {
+    this.tracks = tracks;
+    const b = this.blocks[this.index];
+    if (!this.running || b?.type !== "songs" || !this.songRun) return;
+    const keep = this.songIdx + 1;
+    this.songList = [...this.songList.slice(0, keep), ...(tracks.get(b.id) ?? []).slice(keep)];
+    void this.songRun.replaceUpcoming(this.songList);
+    this.ui.songList(this.songList, this.songIdx);
   }
 
   // ---------- controls ----------

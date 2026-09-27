@@ -21,6 +21,8 @@ export class SongRun {
   private reissued = false;
   private index = -1;
   private uris: string[];
+  private startAt = 0; // where in the list Spotify was told to start (after a reorder)
+  private replayOnResume = false;
 
   constructor(private deviceId: string, private tracks: Track[], private hooks: RunHooks) {
     this.uris = tracks.map(t => t.uri);
@@ -60,7 +62,7 @@ export class SongRun {
         // Spotify sometimes accepts the play command and then doesn't act on it.
         if (waited > 5000 && !this.reissued) {
           this.reissued = true;
-          await sp.playUris(this.deviceId, this.uris);
+          await sp.playUris(this.deviceId, this.uris, this.startAt);
         } else if (waited > 15000) {
           this.hooks.onTrouble("Spotify isn't playing — is the Spotify app open?");
           this.reissued = false;
@@ -123,8 +125,43 @@ export class SongRun {
 
   async resume(): Promise<void> {
     this.pausedByUs = false;
-    await sp.resume(this.deviceId);
+    if (this.replayOnResume) {
+      this.replayOnResume = false;
+      await this.replay();
+    } else {
+      await sp.resume(this.deviceId);
+    }
     this.schedule(700);
+  }
+
+  // He reordered the songs mid-show. The songs already played and the one
+  // playing stay; the rest of this block's list is swapped for `tracks`. Spotify
+  // is handed the new list and carries on with the current song from where it
+  // was (a brief hiccup while it catches up).
+  async replaceUpcoming(tracks: Track[]): Promise<void> {
+    if (this.stopped) return;
+    const keep = this.index >= 0 ? this.index + 1 : 0;
+    const next = [...this.tracks.slice(0, keep), ...tracks.slice(keep)];
+    if (next.map(t => t.uri).join() === this.uris.join()) return;
+    this.tracks = next;
+    this.uris = next.map(t => t.uri);
+    this.state = newRunState();
+    this.startAt = Math.max(this.index, 0);
+    this.reissued = false;
+    this.startedAt = Date.now();
+    if (this.pausedByUs) { this.replayOnResume = true; return; }
+    if (this.timer !== null) { clearTimeout(this.timer); this.timer = null; }
+    await this.replay();
+    this.schedule(700);
+  }
+
+  private async replay(): Promise<void> {
+    let pos = 0;
+    if (this.index >= 0) {
+      const s = await sp.snapshot();
+      if (s.ok && s.itemUri === this.uris[this.startAt]) pos = s.progressMs;
+    }
+    await sp.playUris(this.deviceId, this.uris, this.startAt, pos);
   }
 
   stop(pauseSpotify = true): void {
